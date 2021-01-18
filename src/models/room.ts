@@ -1,7 +1,7 @@
 import mongoose, { Number,Document, Model } from 'mongoose';
 interface roomInterface extends Document {
   name: string;
-  roomId: number;
+  roomId: string;
   maxPlayers: number;
   gameMode: number;
   currentPlayers: number;
@@ -9,7 +9,7 @@ interface roomInterface extends Document {
 }
 const roomSchema = new mongoose.Schema<roomInterface>({
   name: String,
-  roomId: Number,
+  roomId: String,
   maxPlayers: Number,
   gameMode: Number,
   currentPlayers: Number,

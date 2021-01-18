@@ -16,9 +16,10 @@ const setupSocket = (io) => {
         const newRoom = new Room();
         console.log("create room");
         console.log(roomData);
+        //Generte random 9 digits number
         const roomId = Math.floor(100000000 + Math.random() * 900000000);
         newRoom.name = roomData.name;
-        newRoom.roomId = roomId;
+        newRoom.roomId = `${roomId}`;
         newRoom.maxPlayers = +roomData.maxPlayers;
         newRoom.gameMode = +roomData.gameMode;
         newRoom.currentPlayers = 0;
@@ -76,8 +77,15 @@ const setupSocket = (io) => {
     });
 
     // Handle Clear Drawing
-    socket.on("clearDrawing", (data) => {
-      socket.broadcast.emit("clearDrawing");
+    socket.on("clear drawing", (data) => {
+      socket.broadcast.emit("clear drawing");
+    });
+
+    //Handle New Messages
+    socket.on("new message", (data) => {
+      const roomId = data["roomId"];
+      const message = data["message"];
+      socket.to(roomId).emit("new message", message); //Send to all clients in "gameId" room except sender
     });
 
     //Handle client disconnect

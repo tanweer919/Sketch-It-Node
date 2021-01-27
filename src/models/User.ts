@@ -1,7 +1,6 @@
 import mongoose, { Number, Document, Model } from "mongoose";
-interface userInterface extends Document {
-  username: string;
-}
+import { userInterface } from "../interfaces/interface";
+
 const userSchema = new mongoose.Schema<userInterface>({
   username: String
 });

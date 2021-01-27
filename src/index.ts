@@ -14,7 +14,7 @@ const io = require("socket.io")(server, {
   },
 });
 mongoose.Promise = global.Promise;
-mongoose.connect("mongodb://localhost/sketch_it", { useNewUrlParser: true });
+mongoose.connect("mongodb://mongo:27017/sketch_it", { useNewUrlParser: true });
 
 app.use(express.static(__dirname + "/public"));
 app.set("view engine", "ejs");

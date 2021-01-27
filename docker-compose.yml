@@ -1,0 +1,20 @@
+version: '3.8'
+services: 
+  backend:
+    container_name: node-sketch-it
+    restart: always
+    build: ./
+    ports: 
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - ./error.log:/usr/src/app/error.log
+    links: 
+      - mongo
+  mongo:
+    container_name: mongo
+    image: mongo:latest
+    ports: 
+      - "27018:27017"
+    volumes:
+      - ./data:/data/db

@@ -1,4 +1,5 @@
 import Room from "../models/room";
+import User from '../models/User'
 import { roomData } from "../interfaces/interface";
 const setupSocket = (io) => {
   var users = {};
@@ -14,12 +15,15 @@ const setupSocket = (io) => {
     socket.on("create room", async (roomData: roomData) => {
       try {
         const newRoom = new Room();
-        console.log("create room");
-        console.log(roomData);
+        const ownerUsername = roomData.owner;
+        const owner = await User.findOne({username: ownerUsername});
+        if(owner) {
+          newRoom.owner = owner;
+        }
         //Generte random 9 digits number
-        const roomId = Math.floor(100000000 + Math.random() * 900000000);
+        const roomId = `${Math.floor(100000000 + Math.random() * 900000000)}`;
         newRoom.name = roomData.name;
-        newRoom.roomId = `${roomId}`;
+        newRoom.roomId = roomId;
         newRoom.maxPlayers = +roomData.maxPlayers;
         newRoom.gameMode = +roomData.gameMode;
         newRoom.currentPlayers = 0;
@@ -37,8 +41,13 @@ const setupSocket = (io) => {
       try {
         const roomId = data["roomId"];
         const username = data["username"];
-        socket.join(roomId);
-        io.sockets.in(roomId).emit("joined room", username);
+        const room = await Room.findOne({ roomId: roomId });
+        if (room.currentPlayers <= room.maxPlayers) {
+          room.currentPlayers += 1;
+          await room.save();
+          socket.join(roomId);
+          socket.to(roomId).emit("joined room", username);
+        }
       } catch (e) {
         console.log(e);
       }
@@ -49,7 +58,7 @@ const setupSocket = (io) => {
       const roomId = data["roomId"];
       const username = data["username"];
       socket.leave(roomId);
-      io.sockets.in(roomId).emit("left room", username);
+      socket.to(roomId).emit("left room", username);
     });
 
     //Handle Close Room
@@ -71,20 +80,23 @@ const setupSocket = (io) => {
     // });
 
     //Handle Point Drawing
-    socket.on("drawing", (newPoint) => {
-      console.log(newPoint);
-      socket.broadcast.emit("drawing", newPoint);
+    socket.on("drawing", (data) => {
+      const roomId = data["roomId"];
+      const newPoint = data["point"];
+      socket.broadcast.to(roomId).emit("drawing", newPoint);
     });
 
     // Handle Clear Drawing
     socket.on("clear drawing", (data) => {
-      socket.broadcast.emit("clear drawing");
+      const roomId = data["roomId"];
+      socket.to(roomId).emit("clear drawing");
     });
 
     //Handle New Messages
     socket.on("new message", (data) => {
       const roomId = data["roomId"];
       const message = data["message"];
+      console.log(data);
       socket.to(roomId).emit("new message", message); //Send to all clients in "gameId" room except sender
     });
 

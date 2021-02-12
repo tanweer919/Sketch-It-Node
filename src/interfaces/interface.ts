@@ -19,6 +19,15 @@ export interface roomInterface extends Document {
   currentPlayers: number;
   active: number;
   owner: userInterface;
+  players: userInterface[];
+}
+
+export enum level {
+  Easy, Medium, Hard
+}
+export interface pictionaryWord {
+  word: string,
+  level: level
 }
 
 

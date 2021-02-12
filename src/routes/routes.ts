@@ -21,6 +21,7 @@ router.post("/user/create/", async (req, res) => {
   }
 });
 router.post("/user/check", async (req, res) => {
+  console.log(req.body.username);
   try {
     const user = await User.findOne({ username: req.body.username });
     if (user) {

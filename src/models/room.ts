@@ -9,7 +9,8 @@ const roomSchema = new mongoose.Schema<roomInterface>({
   gameMode: Number,
   currentPlayers: Number,
   active: Number,
-  owner: {type: Schema.Types.ObjectId, ref: 'User'}
+  owner: {type: Schema.Types.ObjectId, ref: 'User'},
+  players: [{type: Schema.Types.ObjectId, ref: 'User'}]
 });
 
 const Room: Model<roomInterface> = mongoose.model("Room", roomSchema);

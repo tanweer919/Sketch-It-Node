@@ -10,4 +10,4 @@ RUN npm run tsc
 COPY ./dist .
 EXPOSE 8080
 
-CMD [ "nodemon" ]
+CMD [ "nodemon", "-L" ]

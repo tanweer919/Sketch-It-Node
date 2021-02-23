@@ -1,10 +1,10 @@
 import { Document } from "mongoose";
 
 export interface roomData {
-  name: string;
+  roomName: string;
   maxPlayers: number;
   gameMode: number;
-  owner: string;
+  admin: string;
 }
 
 export interface userInterface extends Document {
@@ -18,7 +18,7 @@ export interface roomInterface extends Document {
   gameMode: number;
   currentPlayers: number;
   active: number;
-  owner: userInterface;
+  admin: userInterface;
   players: userInterface[];
 }
 
@@ -28,6 +28,10 @@ export enum level {
 export interface pictionaryWord {
   word: string,
   level: level
+}
+
+export enum gameStatus{
+  NotStarted, Started, Over
 }
 
 

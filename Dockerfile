@@ -9,5 +9,4 @@ RUN npm install -g ts-node
 RUN npm run tsc
 COPY ./dist .
 EXPOSE 8080
-
 CMD [ "nodemon", "-L" ]

@@ -7,11 +7,14 @@ import {
   gameStatus,
 } from "../interfaces/interface";
 import * as consts from "../constants/socketEvents";
+import * as redisKeys from "../constants/redisKeys";
 import { words } from "../data/words";
 import { Server, Socket } from "socket.io";
 import _ from "lodash";
 const setupSocket = (io: Server, { setAsync, getAsync }) => {
   var users = {};
+  let wordSelectionTimer = {};
+  let drawingTimer = {};
   io.on(consts.ON_CONNECTION, (socket) => {
     //Handle New Client Connected
     socket.on(consts.CONNECTED, (data) => {
@@ -111,31 +114,40 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       const shuffledHardWords = _.shuffle<pictionaryWord>(hardWordList);
 
       //Set random words of each type at the start of the game
-      await setAsync(`easyWords:${roomId}`, JSON.stringify(shuffledEasyWords));
       await setAsync(
-        `mediumWords:${roomId}`,
+        redisKeys.easyWords(roomId),
+        JSON.stringify(shuffledEasyWords)
+      );
+      await setAsync(
+        redisKeys.mediumWords(roomId),
         JSON.stringify(shuffledMediumWords)
       );
 
-      await setAsync(`hardWords:${roomId}`, JSON.stringify(shuffledHardWords));
+      await setAsync(
+        redisKeys.hardWords(roomId),
+        JSON.stringify(shuffledHardWords)
+      );
 
       //Set owner as the first player of the room
-      await setAsync(`players:${roomId}`, JSON.stringify(newRoom.players));
+      await setAsync(
+        redisKeys.players(roomId),
+        JSON.stringify(newRoom.players)
+      );
 
       //Set owner of the room as the first sketcher
-      await setAsync(`sketcher:${roomId}`, JSON.stringify(admin));
+      await setAsync(redisKeys.sketcher(roomId), JSON.stringify(admin));
 
       //Set messages as empty
-      await setAsync(`messages:${roomId}`, JSON.stringify([]));
+      await setAsync(redisKeys.messages(roomId), JSON.stringify([]));
 
       //Set game as not started
       await setAsync(
-        `gameStatus:${roomId}`,
+        redisKeys.gameStatus(roomId),
         JSON.stringify(gameStatus.NotStarted)
       );
 
       const status = "Waiting for other players to join...";
-      await setAsync(`status:${roomId}`, status);
+      await setAsync(redisKeys.status(roomId), status);
       socket.join(roomId);
       io.to(socket.id).emit(consts.ROOM_CREATED, {
         success: true,
@@ -175,26 +187,26 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
         const players = room.players;
 
         //Retrieve all previous messages
-        let previousMessages = await getAsync(`messages:${roomId}`);
+        let previousMessages = await getAsync(redisKeys.messages(roomId));
         previousMessages = JSON.parse(previousMessages);
 
         //Retrieve current sketcher
-        let currentSketcher = await getAsync(`sketcher:${roomId}`);
+        let currentSketcher = await getAsync(redisKeys.sketcher(roomId));
         currentSketcher = JSON.parse(currentSketcher);
 
         //Save in cache
-        await setAsync(`players:${roomId}`, JSON.stringify(players));
+        await setAsync(redisKeys.players(roomId), JSON.stringify(players));
         const gameStatus: Number = JSON.parse(
-          await getAsync(`gameStatus:${roomId}`)
+          await getAsync(redisKeys.gameStatus(roomId))
         );
 
         let status: string;
         if (room.currentPlayers === 2) {
           status = "Waiting for admin to start the game...";
-          await setAsync(`status:${roomId}`, status);
+          await setAsync(redisKeys.status(roomId), status);
           socket.to(roomId).emit(consts.NEW_STATUS, { status });
         }
-        status = await getAsync(`status:${roomId}`);
+        status = await getAsync(redisKeys.status(roomId));
         socket.join(roomId);
         io.to(socket.id).emit(consts.JOINED_ROOM, {
           roomId,
@@ -232,7 +244,7 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       );
       console.log(JSON.stringify(updatedroom));
       const updatedPlayers = updatedroom.players;
-      setAsync(`players:${roomId}`, JSON.stringify(updatedPlayers));
+      setAsync(redisKeys.players(roomId), JSON.stringify(updatedPlayers));
     } catch (e) {
       console.log(e);
     }
@@ -263,10 +275,10 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
   const newMessageHandler = async (socket: Socket, data) => {
     const roomId = data["roomId"];
     const message = data["message"];
-    let messages = await getAsync(`messages:${roomId}`);
+    let messages = await getAsync(redisKeys.messages(roomId));
     messages = JSON.parse(messages);
     messages.push(message);
-    await setAsync(`messages:${roomId}`, JSON.stringify(messages));
+    await setAsync(redisKeys.messages(roomId), JSON.stringify(messages));
     //Send to all clients in "gameId" room except sender
     socket.to(roomId).emit(consts.NEW_MESSAGE, message);
   };
@@ -274,40 +286,62 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
   const nextTurnHandler = async (socket: Socket, data) => {
     const roomId = data["roomId"];
     const username = data["username"];
-    const round: number = JSON.parse(await getAsync(`round:${roomId}`));
-    const turn: number = JSON.parse(await getAsync(`turn:${roomId}`));
+    const round: number = JSON.parse(await getAsync(redisKeys.round(roomId)));
+    const turn: number = JSON.parse(await getAsync(redisKeys.turn(roomId)));
     let shuffledWords: pictionaryWord[];
+
     //At each turn send three random words whose difficulty depends on the round no
     if (round === 0) {
-      shuffledWords = JSON.parse(await getAsync(`easyWords:${roomId}`));
+      shuffledWords = JSON.parse(await getAsync(redisKeys.easyWords(roomId)));
     } else if (round === 1) {
-      shuffledWords = JSON.parse(await getAsync(`mediumWords:${roomId}`));
+      shuffledWords = JSON.parse(await getAsync(redisKeys.mediumWords(roomId)));
     } else {
-      shuffledWords = JSON.parse(await getAsync(`hardWords:${roomId}`));
+      shuffledWords = JSON.parse(await getAsync(redisKeys.hardWords(roomId)));
     }
     //Select next three words from shuffled words
     const wordChoices = shuffledWords.slice(turn * 3, 3 * (turn + 1));
 
-    io.to(socket.id).emit(consts.WORD_CHOICES, wordChoices);
-    socket
-      .to(roomId)
-      .emit(consts.NEW_STATUS, `${username} is selecting a word to draw...`);
+    io.to(socket.id).emit(consts.YOUR_TURN, wordChoices);
+
+    const status = `${username} is selecting a word to draw...`;
+    await setAsync(redisKeys.status(roomId), status);
+    socket.to(roomId).emit(consts.NEW_STATUS, { status });
+    const timer = setTimeout(async () => {
+      await skipTurn(socket, { roomId, username });
+    }, 20000);
+    wordSelectionTimer[socket.id] = timer;
   };
 
-  const wordSelectedHandler = (socket: Socket, data) => {
+  const wordSelectedHandler = async (socket: Socket, data) => {
     const roomId = data["roomId"];
-    const selectedWord = data["selectedWord"];
-    socket.to(roomId).emit(consts.WORD_SELECTED, selectedWord);
+    const selectedWord: string = data["selectedWord"];
+    const placeholder = selectedWord.replace(/\S/gi, "_ ");
+    const username = users[socket.id];
+    await setAsync(redisKeys.currentWord(roomId), selectedWord);
+    socket.to(roomId).emit(consts.WORD_SELECTED, { selectedWord });
+
+    const status = `${username} is drawing ${placeholder}`;
+    socket.to(roomId).emit(consts.NEW_STATUS, { status });
+    await setAsync(redisKeys.status(roomId), status);
+    io.to(socket.id).emit(consts.NEW_STATUS, {
+      status: `You are drawing ${selectedWord}`,
+    });
+    io.in(roomId).emit(consts.START_DRAWING);
+    clearTimeout(wordSelectionTimer[socket.id]);
+    drawingTimer[socket.id] = setTimeout(async () => {
+      await turnEndHandler(socket, { roomId, username });
+    }, 60000);
   };
 
   const turnEndHandler = async (socket: Socket, data) => {
     const roomId = data["roomId"];
     const turn = +data["turn"];
     const players: userInterface[] = JSON.parse(
-      await getAsync(`players:${roomId}`)
+      await getAsync(redisKeys.players(roomId))
     );
     const nextSketcher = players[turn];
-    await setAsync(`sketcher:${roomId}`, JSON.stringify(nextSketcher));
+    // await setAsync(redisKeys.sketcher(roomId), JSON.stringify(nextSketcher));
+    clearTimeout(drawingTimer[socket.id]);
     socket.to(roomId).emit(consts.NEXT_TURN);
   };
 
@@ -317,13 +351,12 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     try {
       const room = await Room.findOne({ roomId: roomId }).populate("admin");
       if (room) {
-        console.log(`${room.admin.username} ${username}`);
         if (room.admin.username === username) {
-          await setAsync(`round:${roomId}`, JSON.stringify(0));
-          await setAsync(`turn:${roomId}`, JSON.stringify(0));
+          await setAsync(redisKeys.round(roomId), JSON.stringify(0));
+          await setAsync(redisKeys.turn(roomId), JSON.stringify(0));
 
           await setAsync(
-            `gameStatus:${roomId}`,
+            redisKeys.gameStatus(roomId),
             JSON.stringify(gameStatus.Started)
           );
           io.in(roomId).emit(consts.GAME_STARTED);
@@ -333,6 +366,12 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     } catch (e) {
       console.log(e);
     }
+  };
+
+  const skipTurn = async (socket: Socket, data) => {
+    const roomId = data["roomId"];
+    const username = data["username"];
+    await nextTurnHandler(socket, { roomId: roomId, username: username });
   };
 
   const onDisconnectingHandler = async (socket: Socket) => {
@@ -353,7 +392,7 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
             { new: true }
           );
           const updatedPlayers = updatedroom.players;
-          setAsync(`players:${roomId}`, JSON.stringify(updatedPlayers));
+          setAsync(redisKeys.players(roomId), JSON.stringify(updatedPlayers));
         } catch (e) {
           console.log(e);
         }

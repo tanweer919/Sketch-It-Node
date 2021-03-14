@@ -1,0 +1,26 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+exports.DISCONNECT = exports.DISCONNECTING = exports.NEW_STATUS = exports.GAME_STARTED = exports.START_GAME = exports.TURN_ENDED = exports.WORD_SELECTED = exports.YOUR_TURN = exports.NEXT_TURN = exports.NEW_MESSAGE = exports.CLEAR_DRAWING = exports.DRAWING = exports.CLOSE_ROOM = exports.LEFT_ROOM = exports.LEAVE_ROOM = exports.NEW_PLAYER = exports.JOINED_ROOM = exports.JOIN_ROOM = exports.ROOM_CREATED = exports.CREATE_ROOM = exports.CONNECTED = exports.ON_CONNECTION = void 0;
+exports.ON_CONNECTION = "connection";
+exports.CONNECTED = "connected";
+exports.CREATE_ROOM = "create_room";
+exports.ROOM_CREATED = "room_created";
+exports.JOIN_ROOM = "join_room";
+exports.JOINED_ROOM = "joined_room";
+exports.NEW_PLAYER = "new_player";
+exports.LEAVE_ROOM = "leave_room";
+exports.LEFT_ROOM = "left_room";
+exports.CLOSE_ROOM = "closr_room";
+exports.DRAWING = "drawing";
+exports.CLEAR_DRAWING = "clear_drawing";
+exports.NEW_MESSAGE = "new_message";
+exports.NEXT_TURN = "next_turn";
+exports.YOUR_TURN = "your_turn";
+exports.WORD_SELECTED = "word_selected";
+exports.TURN_ENDED = "turn_ended";
+exports.START_GAME = "start_game";
+exports.GAME_STARTED = "game_started";
+exports.NEW_STATUS = "new_status";
+exports.DISCONNECTING = "disconnecting";
+exports.DISCONNECT = "disconnect";
+//# sourceMappingURL=socketEvents.js.map

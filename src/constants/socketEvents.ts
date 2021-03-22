@@ -20,5 +20,6 @@ export const GAME_STARTED = "game_started";
 export const NEW_STATUS = "new_status";
 export const SKIP_TURN = "skip_turn";
 export const START_DRAWING = "start_drawing";
+export const ADD_POINTS = "add_points";
 export const DISCONNECTING = "disconnecting";
 export const DISCONNECT = "disconnect";

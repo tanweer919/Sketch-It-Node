@@ -11,6 +11,11 @@ export interface userInterface extends Document {
   username: string;
 }
 
+export interface playerInterface {
+user: userInterface;
+score: number;
+}
+
 export interface roomInterface extends Document {
   name: string;
   roomId: string;
@@ -18,8 +23,8 @@ export interface roomInterface extends Document {
   gameMode: number;
   currentPlayers: number;
   active: number;
-  admin: userInterface;
-  players: userInterface[];
+  admin: playerInterface;
+  players: playerInterface[];
 }
 
 export enum level {

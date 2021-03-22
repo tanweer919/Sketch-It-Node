@@ -9,3 +9,7 @@ export const status = (roomId: string) => `status:${roomId}`;
 export const round = (roomId: string) => `round:${roomId}`;
 export const turn = (roomId: string) => `turn:${roomId}`;
 export const currentWord = (roomId: string) => `currentWord:${roomId}`;
+export const isGuessingAllowed = (roomId: string) =>
+  `isGuessingAllowed:${roomId}`;
+export const pointsGainedThisTurn = (roomId: string) =>
+  `pointsGainedThisTurn:${roomId}`;

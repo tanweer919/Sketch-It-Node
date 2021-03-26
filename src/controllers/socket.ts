@@ -6,6 +6,8 @@ import {
   userInterface,
   gameStatus,
   playerInterface,
+  pointsInterface,
+  messageInterface,
 } from "../interfaces/interface";
 import * as consts from "../constants/socketEvents";
 import * as redisKeys from "../constants/redisKeys";
@@ -159,12 +161,11 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       io.to(socket.id).emit(consts.ROOM_CREATED, {
         success: true,
         roomId: roomId,
-        admin: adminUsername,
         initialRoomData: {
           players: players,
           sketcher: playerAdmin,
           messages: [],
-          admin,
+          admin: playerAdmin.user,
           status,
           gameStatus: gameStatus.NotStarted,
         },
@@ -183,29 +184,29 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       const roomId = data["roomId"];
       const username = data["username"];
       const source = data["source"];
-      const room = await Room.findOne({ roomId: roomId }).populate("players");
+      const room = await Room.findOne({ roomId: roomId }).populate(
+        "players.user admin.user"
+      );
       if (room.currentPlayers <= room.maxPlayers) {
         //If there is still space for player
         const user = await User.findOne({ username: username });
-        const players: playerInterface[] = room.players.map((player) =>
-          player.user._id === user._id ? { ...player, score: 0 } : player
-        );
-        room.currentPlayers += 1;
         //Add this user to the room in the database
         const player: playerInterface = { user, score: 0 };
         room.players.push(player);
+        room.currentPlayers += 1;
         await room.save();
 
         //Retrieve all previous messages
-        let previousMessages = await getAsync(redisKeys.messages(roomId));
-        previousMessages = JSON.parse(previousMessages);
+        let previousMessages: messageInterface[] = JSON.parse(
+          await getAsync(redisKeys.messages(roomId))
+        );
 
         //Retrieve current sketcher
         let currentSketcher = await getAsync(redisKeys.sketcher(roomId));
         currentSketcher = JSON.parse(currentSketcher);
 
         //Save in cache
-        await setAsync(redisKeys.players(roomId), JSON.stringify(players));
+        await setAsync(redisKeys.players(roomId), JSON.stringify(room.players));
         const gameStatus: Number = JSON.parse(
           await getAsync(redisKeys.gameStatus(roomId))
         );
@@ -222,15 +223,15 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
           roomId,
           source,
           initialRoomData: {
-            players: players,
+            players: room.players,
             sketcher: currentSketcher,
             messages: previousMessages,
-            admin: room.admin,
+            admin: room.admin.user,
             status,
             gameStatus,
           },
         });
-        socket.to(roomId).emit(consts.NEW_PLAYER, username);
+        io.in(roomId).emit(consts.NEW_PLAYER, username);
       }
     } catch (e) {
       console.log(e);
@@ -284,18 +285,23 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
 
   const newMessageHandler = async (socket: Socket, data) => {
     const roomId = data["roomId"];
-    const message = data["message"];
-    let messages = await getAsync(redisKeys.messages(roomId));
-    messages = JSON.parse(messages);
+    const message: messageInterface = data["message"];
+    let messages: messageInterface[] = JSON.parse(
+      await getAsync(redisKeys.messages(roomId))
+    );
+    console.log(messages);
     const isGuessingAllowed: number = JSON.parse(
       await getAsync(redisKeys.isGuessingAllowed(roomId))
     );
     const username = message["user"]["username"];
     if (isGuessingAllowed == 1 && message["messageType"] == "userMessage") {
+      let points: pointsInterface = JSON.parse(
+        await getAsync(redisKeys.pointsGainedThisTurn(roomId))
+      );
       let answer: string = message["message"];
       let currentWord: string = await getAsync(redisKeys.currentWord(roomId));
       currentWord = currentWord.toLowerCase();
-      if (answer !== "" && answer !== undefined) {
+      if (answer !== "" && answer !== undefined && !(username in points)) {
         answer = answer.trim();
         answer = answer.toLowerCase();
         if (answer.includes(currentWord)) {
@@ -304,7 +310,6 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
             (timer["_idleStart"] + timer["_idleTimeout"]) / 1000 -
               process.uptime()
           );
-          console.log(timeLeft);
           if (timeLeft > 0) {
             const players: playerInterface[] = JSON.parse(
               await getAsync(redisKeys.players(roomId))
@@ -315,34 +320,31 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
                 break;
               }
             }
-            let points: number[] = JSON.parse(
-              await getAsync(redisKeys.pointsGainedThisTurn(roomId))
-            );
-            points.push(timeLeft);
+            points[username] = timeLeft;
             await setAsync(redisKeys.players(roomId), JSON.stringify(players));
             await setAsync(
               redisKeys.pointsGainedThisTurn(roomId),
               JSON.stringify(points)
             );
-            let modifiedMessage = message;
-            modifiedMessage[
-              "message"
-            ] = `${username} have guessed correctly(${timeLeft} points gained)`;
-            modifiedMessage["messageType"] = "pointsGained";
+            let modifiedMessage: messageInterface = {
+              ...message,
+              message: `${username} have guessed correctly(+${timeLeft} points)`,
+              messageType: "pointsGained",
+            };
             messages.push(modifiedMessage);
             await setAsync(
               redisKeys.messages(roomId),
               JSON.stringify(messages)
             );
-            socket.to(roomId).emit(consts.NEW_MESSAGE, modifiedMessage);
+            io.in(roomId).emit(consts.NEW_MESSAGE, modifiedMessage);
             io.in(roomId).emit(consts.ADD_POINTS, {
               username: username,
               points: timeLeft,
             });
-            if (points.length == players.length - 1) {
+            if (Object.values(points).length == players.length - 1) {
               turnEndHandler(socket, roomId);
+              return;
             }
-            return;
           }
         }
       }
@@ -350,7 +352,7 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     messages.push(message);
     await setAsync(redisKeys.messages(roomId), JSON.stringify(messages));
     //Send to all clients in "gameId" room except sender
-    socket.to(roomId).emit(consts.NEW_MESSAGE, message);
+    io.in(roomId).emit(consts.NEW_MESSAGE, message);
   };
 
   const nextTurnHandler = async (socket: Socket, data) => {
@@ -377,9 +379,9 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     await setAsync(redisKeys.status(roomId), status);
     socket.to(roomId).emit(consts.NEW_STATUS, { status });
     const timer = setTimeout(async () => {
-      await skipTurn(socket, { roomId, username });
+      await skipTurn(socket, { roomId, username }, false);
     }, 20000);
-    wordSelectionTimer[sketcherSocketId] = timer;
+    wordSelectionTimer[roomId] = timer;
   };
 
   const wordSelectedHandler = async (socket: Socket, data) => {
@@ -400,44 +402,52 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       status: `You are drawing ${selectedWord}`,
     });
     io.in(roomId).emit(consts.START_DRAWING);
-    clearTimeout(wordSelectionTimer[socket.id]);
+    clearTimeout(wordSelectionTimer[roomId]);
     drawingTimer[roomId] = setTimeout(async () => {
       await turnEndHandler(socket, roomId);
     }, 60000);
   };
 
   const turnEndHandler = async (socket, roomId) => {
-    const players: playerInterface[] = JSON.parse(await getAsync(redisKeys.players(roomId)));
-    const pointsGainedThisTurn: number[] = JSON.parse(
-      getAsync(redisKeys.pointsGainedThisTurn(roomId))
+    const players: playerInterface[] = JSON.parse(
+      await getAsync(redisKeys.players(roomId))
     );
+    const pointsGainedThisTurn: pointsInterface = JSON.parse(
+      await getAsync(redisKeys.pointsGainedThisTurn(roomId))
+    );
+    const pointsList: number[] = Object.values(pointsGainedThisTurn);
     let turn: number = +JSON.parse(await getAsync(redisKeys.turn(roomId)));
     let round: number = +JSON.parse(await getAsync(redisKeys.round(roomId)));
     let totalPoints = 0;
-    for (let i = 0; i < pointsGainedThisTurn.length; i++) {
-      totalPoints += pointsGainedThisTurn[i];
+    for (let i = 0; i < pointsList.length; i++) {
+      totalPoints += pointsList[i];
     }
     let sketcherPoints: number;
     if (totalPoints == 0) {
       sketcherPoints = -5;
     } else {
-      sketcherPoints = Math.ceil(totalPoints / pointsGainedThisTurn.length);
+      sketcherPoints = Math.ceil(totalPoints / (pointsList.length * 2));
     }
     let sketcher: playerInterface = { ...players[turn], score: sketcherPoints };
     players[turn] = sketcher;
-    await(setAsync(redisKeys.players(roomId)), JSON.stringify(players));
-    let message = {
-      message:
-        sketcherPoints == -5
-          ? `No player has guessed it correctly. So, 5 points have been deducted from ${sketcher.username}.`
-          : `${pointsGainedThisTurn.length} players have guessed correctly. ${sketcher.username} have gained ${sketcher.score} points.`,
+    await setAsync(redisKeys.players(roomId), JSON.stringify(players));
+    const currentWord: string = await getAsync(redisKeys.currentWord(roomId));
+    let message: messageInterface = {
+      message: `${sketcher.user.username} was drawing ${currentWord}. ${
+        pointsList.length
+      }/${players.length - 1} players have guessed it correctly(${
+        sketcherPoints > 0 ? "+" : ""
+      }${sketcherPoints} points)`,
       messageType: "pointsGained",
-      user: sketcher,
+      user: sketcher.user,
     };
-    let messages = await getAsync(redisKeys.messages(roomId));
+    let messages: messageInterface[] = JSON.parse(
+      await getAsync(redisKeys.messages(roomId))
+    );
     messages.push(message);
-    await setAsync(redisKeys.messages(roomId), JSON.stringify(message));
+    await setAsync(redisKeys.messages(roomId), JSON.stringify(messages));
     io.in(roomId).emit(consts.NEW_MESSAGE, message);
+    console.log(sketcherPoints);
     io.in(roomId).emit(consts.ADD_POINTS, {
       username: sketcher.user.username,
       points: sketcherPoints,
@@ -448,33 +458,45 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     if (turn > players.length - 1) {
       turn = 0;
       round += 1;
+      if (round == 3) {
+        return endGameHandler(socket, roomId);
+      }
       await setAsync(redisKeys.round(roomId), JSON.stringify(round));
     }
     await setAsync(redisKeys.isGuessingAllowed(roomId), JSON.stringify(0));
     await setAsync(redisKeys.turn(roomId), JSON.stringify(turn));
-    await setAsync(redisKeys.pointsGainedThisTurn(roomId), JSON.stringify([]));
+    await setAsync(redisKeys.pointsGainedThisTurn(roomId), JSON.stringify({}));
     const nextSketcher = players[turn];
     await setAsync(redisKeys.sketcher(roomId), JSON.stringify(nextSketcher));
     clearTimeout(drawingTimer[roomId]);
-    io.in(roomId).emit(consts.NEXT_TURN, JSON.stringify(nextSketcher.user.username));
-    nextTurnHandler(socket, {
-      roomId: roomId,
-      username: nextSketcher.user.username,
+    io.in(roomId).emit(consts.END_TURN, {
+      message: `Starting next turn. ${nextSketcher.user.username} will be sketching now. Get ready...`,
     });
+    setTimeout(() => {
+      io.in(roomId).emit(consts.NEXT_TURN, {
+        username: nextSketcher.user.username,
+      });
+      nextTurnHandler(socket, {
+        roomId: roomId,
+        username: nextSketcher.user.username,
+      });
+    }, 10000);
   };
 
   const startGameHandler = async (socket: Socket, data) => {
     const roomId = data["roomId"];
     const username = data["username"];
     try {
-      const room = await Room.findOne({ roomId: roomId }).populate("admin");
+      const room = await Room.findOne({ roomId: roomId }).populate(
+        "admin.user"
+      );
       if (room) {
         if (room.admin.user.username === username) {
           await setAsync(redisKeys.round(roomId), JSON.stringify(0));
           await setAsync(redisKeys.turn(roomId), JSON.stringify(0));
           await setAsync(
             redisKeys.pointsGainedThisTurn(roomId),
-            JSON.stringify([])
+            JSON.stringify({})
           );
 
           await setAsync(
@@ -490,31 +512,121 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     }
   };
 
-  const skipTurn = async (socket: Socket, data) => {
+  const skipTurn = async (socket: Socket, data, isDisconnected: boolean) => {
     const roomId = data["roomId"];
     const username = data["username"];
-    await nextTurnHandler(socket, { roomId: roomId, username: username });
+    const players: playerInterface[] = JSON.parse(
+      await getAsync(redisKeys.players(roomId))
+    );
+    let turn: number = +JSON.parse(await getAsync(redisKeys.turn(roomId)));
+    let round: number = +JSON.parse(await getAsync(redisKeys.round(roomId)));
+    const previousSketcher: playerInterface = await getAsync(
+      redisKeys.sketcher(roomId)
+    );
+    if (!isDisconnected) turn += 1;
+    if (turn > players.length - 1) {
+      turn = 0;
+      round += 1;
+      if (round == 3) {
+        return endGameHandler(socket, roomId);
+      }
+      await setAsync(redisKeys.round(roomId), JSON.stringify(round));
+    }
+    await setAsync(redisKeys.isGuessingAllowed(roomId), JSON.stringify(0));
+    await setAsync(redisKeys.turn(roomId), JSON.stringify(turn));
+    const nextSketcher = players[turn];
+    await setAsync(redisKeys.sketcher(roomId), JSON.stringify(nextSketcher));
+    clearTimeout(wordSelectionTimer[roomId]);
+
+    if (isDisconnected) {
+      io.in(roomId).emit(consts.SKIP_TURN, {
+        message: `${previousSketcher.user.username} disconnected. Skipping this turn. ${nextSketcher.user.username} will be sketching now. Get ready...`,
+      });
+    } else {
+      io.in(roomId).emit(consts.SKIP_TURN, {
+        message: `${previousSketcher.user.username} didn't select word in time. Skipping this turn. ${nextSketcher.user.username} will be sketching now. Get ready...`,
+      });
+    }
+    setTimeout(() => {
+      io.in(roomId).emit(consts.NEXT_TURN, {
+        username: nextSketcher.user.username,
+      });
+      nextTurnHandler(socket, {
+        roomId: roomId,
+        username: nextSketcher.user.username,
+      });
+    }, 10000);
   };
 
   const onDisconnectingHandler = async (socket: Socket) => {
+    //Get all the rooms, the disconnecting socket is part of
     const rooms = Object.keys(socket.rooms);
+    //Get username from socket id
     const username = socketIdToUsername[socket.id];
     try {
-      const player = await User.findOne({ username: username });
+      //Get the user from username
+      const player:userInterface = await User.findOne({ username: username });
       rooms.forEach(async (roomId) => {
+        //Ignore room with same id as the socket id
         if (roomId === socket.id) return;
-        io.to(roomId).emit(consts.LEFT_ROOM, { username, roomId });
+        //Emit LEFT_ROOM event with the username
+        io.in(roomId).emit(consts.LEFT_ROOM, { username, roomId });
         try {
-          const updatedroom = await Room.findOneAndUpdate(
+          //Update room by removing player from the room and decreasing current player count by one
+          const updatedRoom = await Room.findOneAndUpdate(
             { roomId: roomId },
             {
               $inc: { currentPlayers: -1 },
-              $pull: { players: player._id },
+              $pull: { players: { user: player._id } },
             },
             { new: true }
+          ).populate("players.user admin.user");
+          const updatedPlayers: playerInterface[] = updatedRoom.players;
+          let currentSketcher: playerInterface = await getAsync(
+            redisKeys.sketcher(roomId)
           );
-          const updatedPlayers = updatedroom.players;
           setAsync(redisKeys.players(roomId), JSON.stringify(updatedPlayers));
+          //If disconnected player was the admin of the room
+          if (updatedRoom.admin.user.username === username) {
+            //If admin was the only player in the room
+            if (updatedPlayers.length == 0) {
+              //Close room
+              return closeRoomHandler(socket, { roomId });
+            } else {
+              const previousAdmin: playerInterface = updatedRoom.admin;
+              //New admin would be the player who joined just after admin
+              const newAdmin: playerInterface = updatedPlayers[0];
+              //Update admin in the database
+              updatedRoom.admin = newAdmin;
+              await updatedRoom.save();
+              //Emit CHANGE_ADMIN event
+              io.in(roomId).emit(consts.CHANGE_ADMIN, {
+                username: newAdmin.user.username,
+              });
+
+              //Store this information in the messages;
+              const messages: messageInterface[] = JSON.parse(
+                await getAsync(redisKeys.messages(roomId))
+              );
+              let message: messageInterface = {
+                user: newAdmin.user,
+                message: `Admin has left the room. ${newAdmin.user.username} is the new admin.`,
+                messageType: "infoMessage",
+              };
+              messages.push(message);
+              await setAsync(
+                redisKeys.messages(roomId),
+                JSON.stringify(messages)
+              );
+              //Sending this info message to the room
+              io.in(roomId).emit(consts.NEW_MESSAGE, message);
+            }
+          }
+          //If disconnected player was the sketcher in the room
+          if (currentSketcher.user.username === username) {
+            //Skip this turn
+            return skipTurn(socket, { roomId, username }, true);
+          }
         } catch (e) {
           console.log(e);
         }
@@ -524,8 +636,22 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     }
   };
 
+  const endGameHandler = async (socket: Socket, roomId: string) => {
+    io.in(roomId).emit(consts.END_GAME, {
+      message: "Game has been completed. Scoreboard is coming up...",
+    });
+    try {
+      const room = await Room.findOne({ roomId });
+      if (room) {
+        room.active = 0;
+        await room.save();
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
   const disconnectHandler = (socket: Socket) => {
-    console.log(socket.id);
     delete socketIdToUsername[socket.id];
   };
 };

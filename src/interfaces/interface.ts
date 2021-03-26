@@ -12,8 +12,8 @@ export interface userInterface extends Document {
 }
 
 export interface playerInterface {
-user: userInterface;
-score: number;
+  user: userInterface;
+  score: number;
 }
 
 export interface roomInterface extends Document {
@@ -27,16 +27,28 @@ export interface roomInterface extends Document {
   players: playerInterface[];
 }
 
+export interface messageInterface {
+  messageType: string;
+  message: string;
+  user: userInterface;
+}
+
+export interface pointsInterface {
+  [key: string]: number;
+}
+
 export enum level {
-  Easy, Medium, Hard
+  Easy,
+  Medium,
+  Hard,
 }
 export interface pictionaryWord {
-  word: string,
-  level: level
+  word: string;
+  level: level;
 }
 
-export enum gameStatus{
-  NotStarted, Started, Over
+export enum gameStatus {
+  NotStarted,
+  Started,
+  Over,
 }
-
-

@@ -77,7 +77,9 @@ router.post("/room/check/", async (req, res) => {
 });
 router.get("/room/public/all", async (req, res) => {
   try {
-    const rooms = await Room.find({ visiblity: 1, active: 1 });
+    const rooms = await Room.find({ visiblity: 1, active: 1 })
+      .populate({ path: "admin.user", select: "username -_id" })
+      .select("name roomId visiblity active -_id");
     if (rooms) {
       return res.status(200).send({ rooms, success: true });
     } else {
@@ -85,11 +87,9 @@ router.get("/room/public/all", async (req, res) => {
     }
   } catch (e) {
     console.log(e);
-    return res
-      .status(400)
-      .send({
-        status: "Faced some problem while fetching all the public rooms",
-      });
+    return res.status(400).send({
+      status: "Faced some problem while fetching all the public rooms",
+    });
   }
 });
 

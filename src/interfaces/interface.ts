@@ -4,15 +4,29 @@ export interface roomData {
   roomName: string;
   maxPlayers: number;
   gameMode: number;
+  visiblity: number;
   admin: string;
 }
 
 export interface userInterface extends Document {
   username: string;
+  firebaseToken: string;
+  email: string;
+  profilePicUrl: string;
+}
+
+export interface serializedUserInterface {
+  username: string;
+  profilePicUrl: string;
 }
 
 export interface playerInterface {
   user: userInterface;
+  score: number;
+}
+
+export interface serializedPlayerInterface {
+  user: serializedUserInterface;
   score: number;
 }
 
@@ -21,6 +35,7 @@ export interface roomInterface extends Document {
   roomId: string;
   maxPlayers: number;
   gameMode: number;
+  visiblity: number;
   currentPlayers: number;
   active: number;
   admin: playerInterface;

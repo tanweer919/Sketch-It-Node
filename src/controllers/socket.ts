@@ -8,6 +8,8 @@ import {
   playerInterface,
   pointsInterface,
   messageInterface,
+  serializedUserInterface,
+  serializedPlayerInterface,
 } from "../interfaces/interface";
 import * as consts from "../constants/socketEvents";
 import * as redisKeys from "../constants/redisKeys";
@@ -111,6 +113,7 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       newRoom.roomId = roomId;
       newRoom.maxPlayers = +roomData.maxPlayers;
       newRoom.gameMode = +roomData.gameMode;
+      newRoom.visiblity = +roomData.visiblity;
       newRoom.currentPlayers = 1;
       newRoom.active = 1;
       await newRoom.save();
@@ -158,14 +161,22 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       const status = "Waiting for other players to join...";
       await setAsync(redisKeys.status(roomId), status);
       socket.join(roomId);
+      const serializedAdmin: serializedUserInterface = {
+        username: playerAdmin.user.username,
+        profilePicUrl: playerAdmin.user.profilePicUrl,
+      };
+      const serializedPlayerAdmin: serializedPlayerInterface = {
+        user: serializedAdmin,
+        score: playerAdmin.score,
+      };
       io.to(socket.id).emit(consts.ROOM_CREATED, {
         success: true,
         roomId: roomId,
         initialRoomData: {
-          players: players,
-          sketcher: playerAdmin,
+          players: [serializedPlayerAdmin],
+          sketcher: serializedPlayerAdmin,
           messages: [],
-          admin: playerAdmin.user,
+          admin: serializedAdmin,
           status,
           gameStatus: gameStatus.NotStarted,
         },
@@ -185,7 +196,8 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       const username = data["username"];
       const source = data["source"];
       const room = await Room.findOne({ roomId: roomId }).populate(
-        "players.user admin.user"
+        "players.user admin.user",
+        "-firebaseToken -email -_id -__v"
       );
       if (room.currentPlayers <= room.maxPlayers) {
         //If there is still space for player
@@ -202,8 +214,9 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
         );
 
         //Retrieve current sketcher
-        let currentSketcher = await getAsync(redisKeys.sketcher(roomId));
-        currentSketcher = JSON.parse(currentSketcher);
+        let currentSketcher: playerInterface = JSON.parse(
+          await getAsync(redisKeys.sketcher(roomId))
+        );
 
         //Save in cache
         await setAsync(redisKeys.players(roomId), JSON.stringify(room.players));
@@ -224,14 +237,23 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
           source,
           initialRoomData: {
             players: room.players,
-            sketcher: currentSketcher,
+            sketcher: {
+              user: {
+                username: currentSketcher.user.username,
+                profilePicUrl: currentSketcher.user.profilePicUrl,
+              },
+              score: currentSketcher.score,
+            } as serializedPlayerInterface,
             messages: previousMessages,
             admin: room.admin.user,
             status,
             gameStatus,
           },
         });
-        io.in(roomId).emit(consts.NEW_PLAYER, username);
+        io.in(roomId).emit(consts.NEW_PLAYER, {
+          user: { username, profilePicUrl: user.profilePicUrl },
+          score: 0,
+        } as serializedPlayerInterface);
       }
     } catch (e) {
       console.log(e);
@@ -520,8 +542,8 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     );
     let turn: number = +JSON.parse(await getAsync(redisKeys.turn(roomId)));
     let round: number = +JSON.parse(await getAsync(redisKeys.round(roomId)));
-    const previousSketcher: playerInterface = await getAsync(
-      redisKeys.sketcher(roomId)
+    const previousSketcher: playerInterface = JSON.parse(
+      await getAsync(redisKeys.sketcher(roomId))
     );
     if (!isDisconnected) turn += 1;
     if (turn > players.length - 1) {
@@ -565,7 +587,7 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     const username = socketIdToUsername[socket.id];
     try {
       //Get the user from username
-      const player:userInterface = await User.findOne({ username: username });
+      const player: userInterface = await User.findOne({ username: username });
       rooms.forEach(async (roomId) => {
         //Ignore room with same id as the socket id
         if (roomId === socket.id) return;
@@ -582,8 +604,8 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
             { new: true }
           ).populate("players.user admin.user");
           const updatedPlayers: playerInterface[] = updatedRoom.players;
-          let currentSketcher: playerInterface = await getAsync(
-            redisKeys.sketcher(roomId)
+          let currentSketcher: playerInterface = JSON.parse(
+            await getAsync(redisKeys.sketcher(roomId))
           );
           setAsync(redisKeys.players(roomId), JSON.stringify(updatedPlayers));
           //If disconnected player was the admin of the room

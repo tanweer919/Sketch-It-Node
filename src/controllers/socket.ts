@@ -260,29 +260,6 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     }
   };
 
-  const leaveRoomHandler = async (socket: Socket, data) => {
-    const roomId = data["roomId"];
-    const username = data["username"];
-    socket.leave(roomId);
-    socket.to(roomId).emit(consts.LEFT_ROOM, { roomId, username });
-    try {
-      const player = await User.findOne({ username: username });
-      const updatedroom = await Room.findOneAndUpdate(
-        { roomId: roomId },
-        {
-          $inc: { currentPlayers: -1 },
-          $pull: { players: player._id },
-        },
-        { new: true }
-      );
-      console.log(JSON.stringify(updatedroom));
-      const updatedPlayers = updatedroom.players;
-      setAsync(redisKeys.players(roomId), JSON.stringify(updatedPlayers));
-    } catch (e) {
-      console.log(e);
-    }
-  };
-
   const closeRoomHandler = async (socket: Socket, data) => {
     try {
       const roomId = data["roomId"];
@@ -580,6 +557,71 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     }, 10000);
   };
 
+  const leaveRoomHandler = async (socket: Socket, data) => {
+    const roomId = data["roomId"];
+    const username = data["username"];
+    socket.leave(roomId);
+    //Emit LEFT_ROOM event with the username
+    io.in(roomId).emit(consts.LEFT_ROOM, { username, roomId });
+    try {
+      const player: userInterface = await User.findOne({ username: username });
+      //Update room by removing player from the room and decreasing current player count by one
+      const updatedRoom = await Room.findOneAndUpdate(
+        { roomId: roomId },
+        {
+          $inc: { currentPlayers: -1 },
+          $pull: { players: { user: player._id } },
+        },
+        { new: true }
+      ).populate("players.user admin.user");
+      const updatedPlayers: playerInterface[] = updatedRoom.players;
+      let currentSketcher: playerInterface = JSON.parse(
+        await getAsync(redisKeys.sketcher(roomId))
+      );
+      setAsync(redisKeys.players(roomId), JSON.stringify(updatedPlayers));
+      //If disconnected player was the admin of the room
+      if (updatedRoom.admin.user.username === username) {
+        //If admin was the only player in the room
+        if (updatedPlayers.length == 0) {
+          //Close room
+          return closeRoomHandler(socket, { roomId });
+        } else {
+          const previousAdmin: playerInterface = updatedRoom.admin;
+          //New admin would be the player who joined just after admin
+          const newAdmin: playerInterface = updatedPlayers[0];
+          //Update admin in the database
+          updatedRoom.admin = newAdmin;
+          await updatedRoom.save();
+          //Emit CHANGE_ADMIN event
+          io.in(roomId).emit(consts.CHANGE_ADMIN, {
+            username: newAdmin.user.username,
+          });
+
+          //Store this information in the messages;
+          const messages: messageInterface[] = JSON.parse(
+            await getAsync(redisKeys.messages(roomId))
+          );
+          let message: messageInterface = {
+            user: newAdmin.user,
+            message: `Admin has left the room. ${newAdmin.user.username} is the new admin.`,
+            messageType: "infoMessage",
+          };
+          messages.push(message);
+          await setAsync(redisKeys.messages(roomId), JSON.stringify(messages));
+          //Sending this info message to the room
+          io.in(roomId).emit(consts.NEW_MESSAGE, message);
+        }
+      }
+      //If disconnected player was the sketcher in the room
+      if (currentSketcher.user.username === username) {
+        //Skip this turn
+        return skipTurn(socket, { roomId, username }, true);
+      }
+    } catch (e) {
+      console.log(e);
+    }
+  };
+
   const onDisconnectingHandler = async (socket: Socket) => {
     //Get all the rooms, the disconnecting socket is part of
     const rooms = Object.keys(socket.rooms);
@@ -587,71 +629,11 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     const username = socketIdToUsername[socket.id];
     try {
       //Get the user from username
-      const player: userInterface = await User.findOne({ username: username });
       rooms.forEach(async (roomId) => {
         //Ignore room with same id as the socket id
         if (roomId === socket.id) return;
-        //Emit LEFT_ROOM event with the username
-        io.in(roomId).emit(consts.LEFT_ROOM, { username, roomId });
-        try {
-          //Update room by removing player from the room and decreasing current player count by one
-          const updatedRoom = await Room.findOneAndUpdate(
-            { roomId: roomId },
-            {
-              $inc: { currentPlayers: -1 },
-              $pull: { players: { user: player._id } },
-            },
-            { new: true }
-          ).populate("players.user admin.user");
-          const updatedPlayers: playerInterface[] = updatedRoom.players;
-          let currentSketcher: playerInterface = JSON.parse(
-            await getAsync(redisKeys.sketcher(roomId))
-          );
-          setAsync(redisKeys.players(roomId), JSON.stringify(updatedPlayers));
-          //If disconnected player was the admin of the room
-          if (updatedRoom.admin.user.username === username) {
-            //If admin was the only player in the room
-            if (updatedPlayers.length == 0) {
-              //Close room
-              return closeRoomHandler(socket, { roomId });
-            } else {
-              const previousAdmin: playerInterface = updatedRoom.admin;
-              //New admin would be the player who joined just after admin
-              const newAdmin: playerInterface = updatedPlayers[0];
-              //Update admin in the database
-              updatedRoom.admin = newAdmin;
-              await updatedRoom.save();
-              //Emit CHANGE_ADMIN event
-              io.in(roomId).emit(consts.CHANGE_ADMIN, {
-                username: newAdmin.user.username,
-              });
-
-              //Store this information in the messages;
-              const messages: messageInterface[] = JSON.parse(
-                await getAsync(redisKeys.messages(roomId))
-              );
-              let message: messageInterface = {
-                user: newAdmin.user,
-                message: `Admin has left the room. ${newAdmin.user.username} is the new admin.`,
-                messageType: "infoMessage",
-              };
-              messages.push(message);
-              await setAsync(
-                redisKeys.messages(roomId),
-                JSON.stringify(messages)
-              );
-              //Sending this info message to the room
-              io.in(roomId).emit(consts.NEW_MESSAGE, message);
-            }
-          }
-          //If disconnected player was the sketcher in the room
-          if (currentSketcher.user.username === username) {
-            //Skip this turn
-            return skipTurn(socket, { roomId, username }, true);
-          }
-        } catch (e) {
-          console.log(e);
-        }
+        //Leave associated room
+        leaveRoomHandler(socket, {"roomId": roomId, "username": username});
       });
     } catch (e) {
       console.log(e);

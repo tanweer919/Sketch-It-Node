@@ -79,11 +79,11 @@ router.get("/room/public/all", async (req, res) => {
   try {
     const rooms = await Room.find({ visiblity: 1, active: 1 })
       .populate({ path: "admin.user", select: "username -_id" })
-      .select("name roomId visiblity active -_id");
+      .select("name roomId visiblity active currentPlayers maxPlayers -_id");
     if (rooms) {
       return res.status(200).send({ rooms, success: true });
     } else {
-      return res.status(400).send({ success: false, rooms: [] });
+      return res.status(200).send({ success: false, rooms: [] });
     }
   } catch (e) {
     console.log(e);

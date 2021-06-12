@@ -1,7 +1,8 @@
-version: '3.8'
+version: '3.0'
 services: 
   backend:
-    container_name: node-sketch-it
+    image: node-just-sketch
+    container_name: node-just-sketch
     restart: always
     build: ./
     ports: 
@@ -9,21 +10,15 @@ services:
     volumes:
       - .:/usr/src/app
       - ./error.log:/usr/src/app/error.log
+    env_file: 
+      - .env
     links: 
-      - mongo
       - redis
     environment:
-      - REDIS_URL=redis://redis:6379
-      - MONGODB_URL=mongodb://mongo:27017/sketch_it
-  mongo:
-    container_name: mongo
-    image: mongo:latest
-    restart: always
-    command: ["mongod"]
-    ports: 
-      - "27018:27017"
-    volumes:
-      - mongodata:/data/db
+      - REDIS_URL=$REDIS_URL
+      - MONGODB_URL_DEVELOPMENT=$MONGODB_URL_DEVELOPMENT
+      - MONGODB_URL_PRODUCTION=$MONGODB_URL_PRODUCTION
+      - NODE_ENV=$NODE_ENV
   redis:
     container_name: redis
     image: redis:latest
@@ -34,6 +29,3 @@ services:
     volumes: 
       - ./redis-data:/var/lib/redis
       - ./redis.conf:/usr/local/etc/redis/redis.conf
-volumes: 
-  mongodata:
-    external: true

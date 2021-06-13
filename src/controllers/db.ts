@@ -3,10 +3,15 @@ import mongoose from "mongoose";
 import { promisify } from "util";
 export const connectMongoDB = () => {
   mongoose.Promise = global.Promise;
-  mongoose.connect(process.env.MONGODB_URL, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  });
+  mongoose.connect(
+    process.env.NODE_ENV === "production"
+      ? process.env.MONGODB_URL_PRODUCTION
+      : process.env.MONGODB_URL_DEVELOPMENT,
+    {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    }
+  );
 };
 
 export const connectRedis = (): redis.RedisClient => {

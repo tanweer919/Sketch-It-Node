@@ -1,15 +1,13 @@
 version: '3.0'
 services: 
   backend:
-    image: node-just-sketch
+    image: justsketch.azurecr.io/node-just-sketch:v1
     container_name: node-just-sketch
-    restart: always
+    domainname: "justsketch"
+    restart: on-failure
     build: ./
     ports: 
       - "3000:3000"
-    volumes:
-      - .:/usr/src/app
-      - ./error.log:/usr/src/app/error.log
     env_file: 
       - .env
     links: 
@@ -19,13 +17,23 @@ services:
       - MONGODB_URL_DEVELOPMENT=$MONGODB_URL_DEVELOPMENT
       - MONGODB_URL_PRODUCTION=$MONGODB_URL_PRODUCTION
       - NODE_ENV=$NODE_ENV
+    command: ["npm", "start"]
   redis:
     container_name: redis
     image: redis:latest
-    restart: always
+    restart: on-failure
+    networks:
+      - default
     ports:
       - "6379:6379"
     command: ["redis-server", "--appendonly", "yes"]
     volumes: 
-      - ./redis-data:/var/lib/redis
-      - ./redis.conf:/usr/local/etc/redis/redis.conf
+      - redis-data:/var/lib/redis
+volumes:
+    redis-data:
+      driver: azure_file
+      driver_opts:
+          share_name: $SHARE_NAME
+          storage_account_name: $STORAGE_ACCOUNT_NAME
+
+

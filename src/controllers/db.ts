@@ -4,7 +4,7 @@ import { promisify } from "util";
 export const connectMongoDB = () => {
   mongoose.Promise = global.Promise;
   mongoose.connect(
-    process.env.NODE_ENVIRONMENT === "production"
+    process.env.NODE_ENV === "production"
       ? process.env.MONGODB_URL_PRODUCTION
       : process.env.MONGODB_URL_DEVELOPMENT,
     {

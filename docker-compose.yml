@@ -15,7 +15,7 @@ services:
       - REDIS_URL=$REDIS_URL
       - MONGODB_URL_DEVELOPMENT=$MONGODB_URL_DEVELOPMENT
       - MONGODB_URL_PRODUCTION=$MONGODB_URL_PRODUCTION
-      - NODE_ENVIRONMENT=$NODE_ENVIRONMENT
+      - NODE_ENV=$NODE_ENV
   redis:
     container_name: redis
     image: redis:latest

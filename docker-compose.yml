@@ -16,6 +16,8 @@ services:
       - MONGODB_URL_DEVELOPMENT=$MONGODB_URL_DEVELOPMENT
       - MONGODB_URL_PRODUCTION=$MONGODB_URL_PRODUCTION
       - NODE_ENV=$NODE_ENV
+    networks:
+      - app-network
   redis:
     container_name: redis
     image: redis:latest
@@ -26,3 +28,41 @@ services:
     volumes: 
       - ./redis-data:/var/lib/redis
       - ./redis.conf:/usr/local/etc/redis/redis.conf
+  webserver:
+    image: nginx:mainline-alpine
+    container_name: webserver
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - web-root:/var/www/html
+      - ./nginx-conf:/etc/nginx/conf.d
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+    depends_on:
+      - backend
+    networks:
+      - app-network
+  certbot:
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - certbot-etc:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - web-root:/var/www/html
+    depends_on:
+      - webserver
+    command: certonly --webroot --webroot-path=/var/www/html --email $EMAIL --agree-tos --no-eff-email --staging -d $DOMAIN_NAME
+volumes:
+  certbot-etc:
+  certbot-var:
+  web-root:
+    driver: local
+    driver_opts:
+      type: none
+      device:  /home/node/sketch-it-node
+      o: bind
+
+networks:
+  app-network:
+    driver: bridge

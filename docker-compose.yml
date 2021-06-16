@@ -50,7 +50,7 @@ services:
       - certbot-var:/var/lib/letsencrypt
     depends_on:
       - webserver
-    command: certonly --webroot --webroot-path=$PATH --email $EMAIL --agree-tos --no-eff-email --staging -d $DOMAIN_NAME
+    command: certonly --webroot --webroot-path=/ --email $EMAIL --agree-tos --no-eff-email --staging -d $DOMAIN_NAME
 volumes:
   certbot-etc:
   certbot-var:

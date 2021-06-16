@@ -42,7 +42,7 @@ services:
       - web-root:/var/www/justsketch
       - dhparam:/etc/ssl/certs
     depends_on:
-      - backend
+      - justsketchbackend
     networks:
       - app-network
   certbot:

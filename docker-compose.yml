@@ -60,7 +60,7 @@ volumes:
     driver: local
     driver_opts:
       type: none
-      device:  /home/node/sketch-it-node
+      device: $PATH
       o: bind
 
 networks:

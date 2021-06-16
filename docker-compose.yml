@@ -1,7 +1,7 @@
 version: '3.8'
 services: 
-  justSketchBackend:
-    container_name: justSketchBackend
+  justsketchbackend:
+    container_name: justsketchbackend
     restart: always
     build: ./
     ports: 

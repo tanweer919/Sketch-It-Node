@@ -34,11 +34,13 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx-conf:/etc/nginx/conf.d
       - certbot-etc:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
       - web-root:/var/www/justsketch
+      - dhparam:/etc/ssl/certs
     depends_on:
       - backend
     networks:
@@ -61,6 +63,12 @@ volumes:
     driver_opts:
       type: none
       device: $ROOT_PATH
+      o: bind
+  dhparam:
+    driver: local
+    driver_opts:
+      type: none
+      device: $CERT_PATH
       o: bind
 
 networks:

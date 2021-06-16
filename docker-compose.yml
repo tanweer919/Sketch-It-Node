@@ -1,7 +1,7 @@
 version: '3.8'
 services: 
-  backend:
-    container_name: node-sketch-it
+  justSketchBackend:
+    container_name: justSketchBackend
     restart: always
     build: ./
     ports: 
@@ -54,7 +54,7 @@ services:
       - web-root:/var/www/justsketch
     depends_on:
       - webserver
-    command: certonly --webroot --webroot-path=/var/www/justsketch --email $EMAIL --agree-tos --no-eff-email --force-renewal -d $AZURE_DOMAIN -d $DOMAIN_NAME -d www.$DOMAIN_NAME
+    command: certonly --webroot --webroot-path=/var/www/justsketch --email $EMAIL --agree-tos --no-eff-email --force-renewal -d $AZURE_DOMAIN
 volumes:
   certbot-etc:
   certbot-var:

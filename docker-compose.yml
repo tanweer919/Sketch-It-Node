@@ -56,7 +56,7 @@ services:
       - web-root:/var/www/justsketch
     depends_on:
       - webserver
-    command: certonly --webroot --webroot-path=/var/www/justsketch --email $EMAIL --agree-tos --no-eff-email --force-renewal -d $AZURE_DOMAIN
+    command: certonly --webroot --webroot-path=/var/www/justsketch --email $EMAIL --agree-tos --no-eff-email --force-renewal -d $AZURE_DOMAIN -d $DOMAIN_NAME -d www.$DOMAIN_NAME
 volumes:
   certbot-etc:
   certbot-var:

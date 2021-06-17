@@ -4,6 +4,7 @@ services:
     container_name: justsketchbackend
     restart: always
     build: ./
+    command: npm run dev
     ports: 
       - "3000:3000"
     volumes:
@@ -30,49 +31,6 @@ services:
       - ./redis.conf:/usr/local/etc/redis/redis.conf
     networks:
       - app-network
-  webserver:
-    image: nginx:mainline-alpine
-    container_name: webserver
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx-conf:/etc/nginx/conf.d
-      - certbot-etc:/etc/letsencrypt
-      - certbot-var:/var/lib/letsencrypt
-      - web-root:/var/www/justsketch
-      - dhparam:/etc/ssl/certs
-    depends_on:
-      - justsketchbackend
-    networks:
-      - app-network
-  certbot:
-    image: certbot/certbot
-    container_name: certbot
-    volumes:
-      - certbot-etc:/etc/letsencrypt
-      - certbot-var:/var/lib/letsencrypt
-      - web-root:/var/www/justsketch
-    depends_on:
-      - webserver
-    command: certonly --webroot --webroot-path=/var/www/justsketch --email $EMAIL --agree-tos --no-eff-email --force-renewal -d $AZURE_DOMAIN -d $DOMAIN_NAME -d www.$DOMAIN_NAME
-volumes:
-  certbot-etc:
-  certbot-var:
-  web-root:
-    driver: local
-    driver_opts:
-      type: none
-      device: $ROOT_PATH
-      o: bind
-  dhparam:
-    driver: local
-    driver_opts:
-      type: none
-      device: $CERT_PATH
-      o: bind
-
 networks:
   app-network:
     driver: bridge

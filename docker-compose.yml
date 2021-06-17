@@ -28,6 +28,8 @@ services:
     volumes: 
       - ./redis-data:/var/lib/redis
       - ./redis.conf:/usr/local/etc/redis/redis.conf
+    networks:
+      - app-network
   webserver:
     image: nginx:mainline-alpine
     container_name: webserver
@@ -43,6 +45,7 @@ services:
       - dhparam:/etc/ssl/certs
     depends_on:
       - justsketchbackend
+    network_mode: "host"
     networks:
       - app-network
   certbot:

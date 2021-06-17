@@ -45,7 +45,6 @@ services:
       - dhparam:/etc/ssl/certs
     depends_on:
       - justsketchbackend
-    network_mode: "host"
     networks:
       - app-network
   certbot:

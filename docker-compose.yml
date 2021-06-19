@@ -4,12 +4,15 @@ services:
     container_name: justsketchbackend
     restart: always
     build: ./
-    command: npm run dev
     ports: 
       - "3000:3000"
+      - "9229:9229"
+    command: npm run dev
     volumes:
-      - .:/usr/src/app
+      - ./:/usr/src/app
+      - /usr/src/app/node_modules
       - ./error.log:/usr/src/app/error.log
+      - ./nodemon.json:/usr/src/app/nodemon.json
     links: 
       - redis
     environment:

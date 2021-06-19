@@ -99,16 +99,22 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     try {
       const newRoom = new Room();
       const adminUsername = roomData.admin;
+
+      //Get the player who is the admin from database
       const admin = await User.findOne({ username: adminUsername });
       let playerAdmin: playerInterface;
       if (admin) {
+        //Add admin to the players list in the database and assign a score of 0
         playerAdmin = { user: admin, score: 0 };
         newRoom.admin = playerAdmin;
         newRoom.players.push(playerAdmin);
       }
+
       //Generate random 9 digits number
       let roomId = `${Math.floor(100000000 + Math.random() * 900000000)}`;
       let roomWithSameId = Room.findOne({ roomId });
+
+      //Assign properties to new room
       newRoom.name = roomData.roomName;
       newRoom.roomId = roomId;
       newRoom.maxPlayers = +roomData.maxPlayers;
@@ -117,9 +123,13 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       newRoom.currentPlayers = 1;
       newRoom.active = 1;
       await newRoom.save();
+
+      //Filter words based on level
       let easyWordList = words.filter((word) => word.level === 0);
       let mediumWordList = words.filter((word) => word.level === 1);
       let hardWordList = words.filter((word) => word.level === 2);
+
+      //Shuffle words of different levels
       const shuffledEasyWords = _.shuffle<pictionaryWord>(easyWordList);
       const shuffledMediumWords = _.shuffle<pictionaryWord>(mediumWordList);
       const shuffledHardWords = _.shuffle<pictionaryWord>(hardWordList);
@@ -139,7 +149,14 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
         JSON.stringify(shuffledHardWords)
       );
 
-      //Set owner as the first player of the room
+      //Add the room created message
+      let message: messageInterface = {
+        message: "",
+        messageType: "createRoom",
+        user: admin,
+      };
+
+      //Set owner as the first player of the room in redis
       //Set initial score to 0
       const players: playerInterface[] = [playerAdmin];
       await setAsync(redisKeys.players(roomId), JSON.stringify(players));
@@ -148,7 +165,7 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       await setAsync(redisKeys.sketcher(roomId), JSON.stringify(playerAdmin));
 
       //Set messages as empty
-      await setAsync(redisKeys.messages(roomId), JSON.stringify([]));
+      await setAsync(redisKeys.messages(roomId), JSON.stringify([message]));
 
       await setAsync(redisKeys.isGuessingAllowed(roomId), JSON.stringify(0));
 
@@ -157,25 +174,32 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
         redisKeys.gameStatus(roomId),
         JSON.stringify(gameStatus.NotStarted)
       );
-
+      
+      //Set status of the game
       const status = "Waiting for other players to join...";
       await setAsync(redisKeys.status(roomId), status);
+
+      //Join the newly created room
       socket.join(roomId);
       const serializedAdmin: serializedUserInterface = {
         username: playerAdmin.user.username,
         profilePicUrl: playerAdmin.user.profilePicUrl,
       };
+
+
       const serializedPlayerAdmin: serializedPlayerInterface = {
         user: serializedAdmin,
         score: playerAdmin.score,
       };
+
+      //Emit event for Room creation
       io.to(socket.id).emit(consts.ROOM_CREATED, {
         success: true,
         roomId: roomId,
         initialRoomData: {
           players: [serializedPlayerAdmin],
           sketcher: serializedPlayerAdmin,
-          messages: [],
+          messages: [message],
           admin: serializedAdmin,
           status,
           gameStatus: gameStatus.NotStarted,
@@ -195,6 +219,8 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       const roomId = data["roomId"];
       const username = data["username"];
       const source = data["source"];
+
+      //Find room with given roomId
       const room = await Room.findOne({ roomId: roomId }).populate(
         "players.user admin.user",
         "-firebaseToken -email -_id -__v"
@@ -202,6 +228,7 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
       if (room.currentPlayers <= room.maxPlayers) {
         //If there is still space for player
         const user = await User.findOne({ username: username });
+
         //Add this user to the room in the database
         const player: playerInterface = { user, score: 0 };
         room.players.push(player);
@@ -218,7 +245,7 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
           await getAsync(redisKeys.sketcher(roomId))
         );
 
-        //Save in cache
+        //Save in redis
         await setAsync(redisKeys.players(roomId), JSON.stringify(room.players));
         const gameStatus: Number = JSON.parse(
           await getAsync(redisKeys.gameStatus(roomId))
@@ -226,6 +253,7 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
 
         let status: string;
         if (room.currentPlayers === 2) {
+          //If this is the second player
           status = "Waiting for admin to start the game...";
           await setAsync(redisKeys.status(roomId), status);
           socket.to(roomId).emit(consts.NEW_STATUS, { status });
@@ -288,7 +316,6 @@ const setupSocket = (io: Server, { setAsync, getAsync }) => {
     let messages: messageInterface[] = JSON.parse(
       await getAsync(redisKeys.messages(roomId))
     );
-    console.log(messages);
     const isGuessingAllowed: number = JSON.parse(
       await getAsync(redisKeys.isGuessingAllowed(roomId))
     );
